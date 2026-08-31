@@ -19,6 +19,8 @@ const schema = z.object({
   PORT: z.coerce.number().default(3000),
   DATABASE_URL: z.string().default('postgres://shop:shop@localhost:5440/shop'),
   LOG_LEVEL: z.string().default('info'),
+  PUBLIC_URL: z.string().default(''),
+  CORS_ORIGINS: z.string().default('*'),
 
   SUPPLIER_A_URL: z.string().default('http://localhost:4001'),
   SUPPLIER_B_URL: z.string().default('http://localhost:4002'),

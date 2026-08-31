@@ -1,5 +1,6 @@
 import { OpenAPIObject } from '@nestjs/swagger';
 import { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
+import { appConfig } from '../config/app-config';
 
 const orderSchema: SchemaObject = {
   type: 'object',
@@ -71,9 +72,12 @@ export const openApiDocument: OpenAPIObject = {
       'Всё построено вокруг одного требования: **код выдаётся ровно один раз** — даже при ' +
       'пятидесяти параллельных вебхуках, зависшем поставщике или перезапуске сервиса ' +
       'посреди выдачи.\n\n' +
-      'Заглушки поставщиков документированы отдельно: http://localhost:4001/docs',
+      'Заглушки поставщиков документированы отдельно, на своих адресах по пути /docs.',
   },
-  servers: [{ url: 'http://localhost:3010', description: 'Локальный запуск' }],
+  servers: [
+    ...(appConfig.PUBLIC_URL ? [{ url: appConfig.PUBLIC_URL, description: 'Публичный адрес' }] : []),
+    { url: '/', description: 'Тот же хост, откуда открыта документация' },
+  ],
   tags: [
     { name: 'Каталог', description: 'Витрина товаров с остатками' },
     { name: 'Заказы', description: 'Создание заказа и получение его статуса' },

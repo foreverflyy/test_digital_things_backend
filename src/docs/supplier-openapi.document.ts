@@ -28,7 +28,7 @@ export const supplierOpenApiDocument: OpenAPIObject = {
       'Главное свойство по контракту: **повтор с тем же request_id возвращает тот же код**. ' +
       'Именно это делает безопасным повтор после таймаута.',
   },
-  servers: [{ url: `http://localhost:${appConfig.SUPPLIER_PORT}` }],
+  servers: [{ url: '/', description: 'Тот же хост, откуда открыта документация' }],
   tags: [
     { name: 'Выдача', description: 'Контрактные ручки поставщика' },
     { name: 'Управление', description: 'Настройка поведения для тестов' },

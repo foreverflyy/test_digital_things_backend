@@ -8,9 +8,17 @@ import { MoneyService } from './money/money.service';
 import { appConfig } from './config/app-config';
 import { openApiDocument } from './docs/openapi.document';
 
+
+function corsOptions() {
+  const raw = appConfig.CORS_ORIGINS.trim();
+  if (raw === '*') return { origin: true };
+  return { origin: raw.split(',').map((value) => value.trim()).filter(Boolean) };
+}
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn'] });
   app.enableShutdownHooks();
+  app.enableCors(corsOptions());
 
   if (process.env.AUTO_MIGRATE !== 'false') {
     await app.get(MigrationRunner).run();

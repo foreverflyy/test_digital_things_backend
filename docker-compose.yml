@@ -22,6 +22,8 @@ services:
       PORT: 3000
       SERVICE_NAME: shop-core
       LOG_LEVEL: info
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      PUBLIC_URL: ${PUBLIC_URL:-}
       SUPPLIER_A_URL: http://supplier-a:4001
       SUPPLIER_B_URL: http://supplier-b:4002
       SUPPLIER_TIMEOUT_MS: 1500
@@ -52,6 +54,7 @@ services:
       SERVICE_NAME: supplier-a
       SUPPLIER_ID: A
       SUPPLIER_PORT: 4001
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
       SUPPLIER_EXTRA_KEYS_PER_SKU: 40
     ports:
       - "4001:4001"
@@ -64,6 +67,7 @@ services:
       SERVICE_NAME: supplier-b
       SUPPLIER_ID: B
       SUPPLIER_PORT: 4002
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
       SUPPLIER_EXTRA_KEYS_PER_SKU: 40
     ports:
       - "4002:4002"
