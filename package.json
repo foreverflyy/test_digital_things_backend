@@ -1,0 +1,46 @@
+{
+  "name": "digital-goods-core",
+  "version": "1.0.0",
+  "private": true,
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "start:supplier": "node dist/supplier/main.supplier.js",
+    "dev": "tsc -w -p tsconfig.json",
+    "migrate": "node dist/database/migrate.cli.js",
+    "seed": "node dist/database/seed.cli.js",
+    "reconcile": "node dist/reconciliation/reconcile.cli.js",
+    "stack:up": "docker compose up -d --build && node scripts/wait-for-api.mjs",
+    "stack:down": "docker compose down -v",
+    "stack:reset": "docker compose down -v && npm run stack:up",
+    "stack:logs": "docker compose logs -f api",
+    "test": "node --test --test-concurrency=1 \"test/*.test.mjs\"",
+    "test:race": "node --test test/01-race-webhooks.test.mjs",
+    "test:duplicate": "node --test test/02-duplicate-event.test.mjs",
+    "test:out-of-order": "node --test test/03-out-of-order.test.mjs",
+    "test:timeout-trap": "node --test test/04-timeout-trap.test.mjs",
+    "test:fallback": "node --test test/05-fallback-ab.test.mjs",
+    "test:out-of-stock": "node --test test/06-out-of-stock.test.mjs",
+    "test:ledger": "node --test test/07-ledger-invariant.test.mjs",
+    "test:catalog": "node --test test/08-catalog-performance.test.mjs",
+    "test:chaos": "node --test test/09-chaos.test.mjs",
+    "verify": "npm run stack:reset && npm test"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/core": "^10.4.15",
+    "@nestjs/platform-express": "^10.4.15",
+    "pg": "^8.13.1",
+    "pino": "^9.5.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.7.3"
+  }
+}
