@@ -11,6 +11,7 @@ import { DeliveryAttempt, DeliveryAttemptsRepository } from './delivery-attempts
 import { SUPPLIERS, SupplierClient, SupplierOutcome } from './suppliers/supplier.client';
 
 const UNIQUE_VIOLATION = '23505';
+const MAX_CODE_CONFLICT_RETRIES = 3;
 
 export type DeliveryOutcome =
   | 'delivered'
@@ -67,46 +68,52 @@ export class DeliveryService implements OnModuleInit {
     const failures: SupplierOutcome[] = [];
 
     for (const supplier of this.suppliers) {
-      const attemptNo = await this.orders.nextAttemptNo(order.id);
-      const requestId = `req_${order.id}_${supplier.id}_${attemptNo}`;
-      const attempt = await this.attempts.open(order.id, supplier.id, requestId, attemptNo);
+      let rejected: SupplierOutcome | null = null;
 
-      const outcome = await supplier.issue({
-        requestId,
-        sku: order.sku,
-        orderId: order.id,
-      });
+      for (let retry = 0; retry <= MAX_CODE_CONFLICT_RETRIES; retry += 1) {
+        const attemptNo = await this.orders.nextAttemptNo(order.id);
+        const requestId = `req_${order.id}_${supplier.id}_${attemptNo}`;
+        const attempt = await this.attempts.open(order.id, supplier.id, requestId, attemptNo);
 
-      if (outcome.kind === 'ok') {
-        const finalized = await this.finalize(order, attempt, outcome.code, outcome.httpStatus);
-        if (finalized) return 'delivered';
-        failures.push({ kind: 'error', httpStatus: null, reason: 'code_conflict' });
-        continue;
-      }
+        const outcome = await supplier.issue({
+          requestId,
+          sku: order.sku,
+          orderId: order.id,
+        });
 
-      if (outcome.kind === 'timeout') {
-        await this.attempts.markUnknown(attempt.id, 'timeout');
-        this.logger.warn('delivery.timeout_unknown', {
+        if (outcome.kind === 'ok') {
+          const finalized = await this.finalize(order, attempt, outcome.code, outcome.httpStatus);
+          if (finalized) return 'delivered';
+          continue;
+        }
+
+        if (outcome.kind === 'timeout') {
+          await this.attempts.markUnknown(attempt.id, 'timeout');
+          this.logger.warn('delivery.timeout_unknown', {
+            order_id: order.id,
+            provider: supplier.id,
+            request_id: requestId,
+            outcome: 'unknown',
+            note: 'no_fallback_until_reconciled',
+          });
+          return 'awaiting_reconcile';
+        }
+
+        const reason = outcome.kind === 'error' ? outcome.reason : outcome.kind;
+        const httpStatus = 'httpStatus' in outcome ? outcome.httpStatus : null;
+        await this.attempts.markFailed(attempt.id, reason, httpStatus);
+        this.logger.warn('delivery.provider_rejected', {
           order_id: order.id,
           provider: supplier.id,
           request_id: requestId,
-          outcome: 'unknown',
-          note: 'no_fallback_until_reconciled',
+          reason,
+          http_status: httpStatus,
         });
-        return 'awaiting_reconcile';
+        rejected = outcome;
+        break;
       }
 
-      const reason = outcome.kind === 'error' ? outcome.reason : outcome.kind;
-      const httpStatus = 'httpStatus' in outcome ? outcome.httpStatus : null;
-      await this.attempts.markFailed(attempt.id, reason, httpStatus);
-      failures.push(outcome);
-      this.logger.warn('delivery.provider_rejected', {
-        order_id: order.id,
-        provider: supplier.id,
-        request_id: requestId,
-        reason,
-        http_status: httpStatus,
-      });
+      failures.push(rejected ?? { kind: 'error', httpStatus: null, reason: 'code_conflict' });
     }
 
     const allOutOfStock =
