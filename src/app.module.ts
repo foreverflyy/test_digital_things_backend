@@ -12,6 +12,7 @@ import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { QueueModule } from './queue/queue.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
+import { SelfTestModule } from './selftest/selftest.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ReconciliationModule } from './reconciliation/reconciliation.module';
     DeliveryModule,
     LedgerModule,
     ReconciliationModule,
+    SelfTestModule,
   ],
   controllers: [HealthController],
 })

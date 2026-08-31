@@ -83,6 +83,14 @@ export const openApiDocument: OpenAPIObject = {
     { name: 'Заказы', description: 'Создание заказа и получение его статуса' },
     { name: 'Вебхуки', description: 'Приём событий от платёжной системы' },
     { name: 'Администрирование', description: 'Сверка, аудит и восстановление' },
+    {
+      name: 'Наблюдаемость',
+      description: 'Структурированные логи и состояние фоновых задач',
+    },
+    {
+      name: 'Поставщики',
+      description: 'Управление заглушками: отказы, таймауты, остатки',
+    },
     { name: 'Служебное', description: 'Проверка живости' },
   ],
   paths: {
@@ -341,6 +349,246 @@ export const openApiDocument: OpenAPIObject = {
             },
           },
         },
+      },
+    },
+    '/admin/selftest/run': {
+      post: {
+        tags: ['Администрирование'],
+        summary: 'Прогнать состязательные сценарии и показать результат',
+        description:
+          'Запускает те же проверки, что и `npm test`, прямо на работающем сервисе и возвращает ' +
+          'отчёт: какой критерий приёмки проверялся, что ожидалось и что получилось.\n\n' +
+          'Сценарии реально создают заказы, шлют вебхуки и управляют заглушками поставщиков ' +
+          '(включая зависание и отказ), поэтому на боевом стенде запускать не стоит. ' +
+          'После прогона заглушки возвращаются в исходное состояние.\n\n' +
+          'Полный набор занимает несколько секунд. Можно запустить один сценарий параметром scenario.',
+        parameters: [
+          {
+            name: 'scenario',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: [
+                'race_webhooks',
+                'duplicate_event',
+                'webhook_before_order',
+                'timeout_trap',
+                'fallback_ab',
+                'out_of_stock_recovery',
+                'ledger_invariant',
+              ],
+            },
+            description: 'Прогнать только один сценарий. По умолчанию — все.',
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Отчёт о прогоне',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    started_at: { type: 'string', format: 'date-time' },
+                    duration_ms: { type: 'integer' },
+                    passed: { type: 'integer', example: 7 },
+                    failed: { type: 'integer', example: 0 },
+                    total: { type: 'integer', example: 7 },
+                    all_passed: { type: 'boolean' },
+                    scenarios: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          name: { type: 'string', example: 'race_webhooks' },
+                          title: { type: 'string', example: '50 параллельных вебхуков по одному заказу' },
+                          criterion: {
+                            type: 'string',
+                            example: 'Критерий 1: ровно один факт выдачи, без потерь и дублей',
+                          },
+                          passed: { type: 'boolean' },
+                          duration_ms: { type: 'integer' },
+                          order_id: { type: 'string', nullable: true },
+                          checks: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                description: { type: 'string' },
+                                expected: { type: 'string' },
+                                actual: { type: 'string' },
+                                passed: { type: 'boolean' },
+                                informational: {
+                                  type: 'boolean',
+                                  description: 'Справочная строка, на результат не влияет',
+                                },
+                              },
+                            },
+                          },
+                          error: { type: 'string' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/admin/logs': {
+      get: {
+        tags: ['Наблюдаемость'],
+        summary: 'Структурированные логи',
+        description:
+          'Последние записи журнала в том виде, в каком они уходят в stdout. У каждой записи есть ' +
+          'trace_id, общий для всего пути одного платежа: приём вебхука, вызов поставщика, ' +
+          'проводка, выдача. Фильтр по order_id показывает историю одного заказа целиком.',
+        parameters: [
+          { name: 'order_id', in: 'query', schema: { type: 'string' } },
+          {
+            name: 'event',
+            in: 'query',
+            schema: { type: 'string' },
+            description: 'Подстрока имени события: payment, delivery, ledger, supplier, job',
+          },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 100, maximum: 500 } },
+        ],
+        responses: {
+          200: {
+            description: 'Записи, новые сверху',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    records: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          time: { type: 'string', format: 'date-time' },
+                          level: { type: 'string', example: 'info' },
+                          event: { type: 'string', example: 'delivery.delivered' },
+                          trace_id: { type: 'string' },
+                          order_id: { type: 'string' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/admin/jobs': {
+      get: {
+        tags: ['Наблюдаемость'],
+        summary: 'Состояние очереди и фоновых задач',
+        description:
+          'Сколько задач в каждом статусе, когда в последний раз отрабатывали периодические ' +
+          'задачи и когда запустятся снова, а также задачи с ошибками.',
+        responses: {
+          200: {
+            description: 'Состояние',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    queue: { type: 'array', items: { type: 'object' } },
+                    schedules: { type: 'array', items: { type: 'object' } },
+                    failing: { type: 'array', items: { type: 'object' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/admin/suppliers': {
+      get: {
+        tags: ['Поставщики'],
+        summary: 'Состояние обеих заглушек',
+        description: 'Текущие настройки сбоев и остатки по SKU у поставщиков A и B.',
+        responses: { 200: { description: 'Состояние поставщиков' } },
+      },
+    },
+    '/admin/suppliers/{provider}/control': {
+      post: {
+        tags: ['Поставщики'],
+        summary: 'Настроить поведение поставщика',
+        description:
+          'Частичное обновление. Так воспроизводятся сценарии: hard_down — поставщик недоступен ' +
+          '(проверка fallback), issue_then_hang — выдаёт код и не отвечает (ловушка таймаута), ' +
+          'force_out_of_stock — нет в наличии, failure_rate и timeout_rate — случайные сбои.',
+        parameters: [
+          {
+            name: 'provider',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', enum: ['A', 'B'] },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  failure_rate: { type: 'number', minimum: 0, maximum: 1, example: 0.4 },
+                  timeout_rate: { type: 'number', minimum: 0, maximum: 1, example: 0.3 },
+                  latency_ms: { type: 'integer', example: 100 },
+                  hard_down: { type: 'boolean' },
+                  force_out_of_stock: { type: 'boolean' },
+                  issue_then_hang: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: 'Новые настройки' } },
+      },
+    },
+    '/admin/suppliers/{provider}/control/reset': {
+      post: {
+        tags: ['Поставщики'],
+        summary: 'Вернуть поставщика в исходное состояние',
+        parameters: [
+          { name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['A', 'B'] } },
+        ],
+        responses: { 200: { description: 'Настройки сброшены' } },
+      },
+    },
+    '/admin/suppliers/{provider}/restock': {
+      post: {
+        tags: ['Поставщики'],
+        summary: 'Пополнить остаток у поставщика',
+        parameters: [
+          { name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['A', 'B'] } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['sku', 'count'],
+                properties: {
+                  sku: { type: 'string', example: 'KEY-EFT' },
+                  count: { type: 'integer', example: 10 },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: 'Сколько добавлено' } },
       },
     },
     '/admin/recovery/run': {
